@@ -25,3 +25,11 @@ torch = [
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
+
+# Pre-staged FA3 CUDA kernels for the airgapped image build. Used by
+# `kernels lock .` (writes kernels.lock) and `kernels download .` (warms
+# the HF hub cache). Both repos are listed so the same image works on
+# Hopper (varunneal/flash-attention-3) and Ampere (kernels-community).
+[tool.kernels.dependencies]
+"kernels-community/flash-attn3" = ">=0.0.0"
+"varunneal/flash-attention-3"   = ">=0.0.0"
