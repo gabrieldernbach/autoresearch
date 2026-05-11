@@ -22,54 +22,38 @@ If you are new to neural networks, this ["Dummy's Guide"](https://x.com/hooeem/s
 
 This fork is designed to run end-to-end inside [`msr-ai4science/airgap`](https://github.com/msr-ai4science/airgap)
 — a network-isolated, hardened container that adds GitHub Copilot CLI on top of
-the project image. Everything below the **Build** step happens **offline** from
-the agent's point of view: there is no PyPI, no HuggingFace, no GitHub egress
-once the agent is running.
+the project image. Everything below `./start.sh` happens **offline** from the
+agent's point of view: no PyPI, no HuggingFace, no GitHub egress at run time.
 
-**Requirements:** Docker 23+, Compose v2.24+, GitHub CLI (`gh`), an NVIDIA GPU
-(tested on H100; A100 also works), and one of GitHub Copilot or an internal
-Copilot endpoint.
+**Requirements:** Docker 23+, NVIDIA Container Toolkit, an NVIDIA GPU
+(tested on H100; A100 also works), and `airgap` already installed +
+`airgap auth login` already done.
 
 ```bash
-# 1. Install airgap (one-time)
-gh api repos/msr-ai4science/airgap/contents/install.sh --jq '.content' | base64 -d | bash
-airgap auth login
+# 1. Clone this fork
+git clone https://github.com/<your-org>/autoresearch ~/autoresearch
+cd ~/autoresearch
 
-# 2. Clone this fork
-git clone https://github.com/<your-org>/autoresearch ~/code/autoresearch
-
-# 3. Create the host data directory (will hold ~1.1 GB of pre-staged shards)
-sudo mkdir -p /data/autoresearch && sudo chown $USER /data/autoresearch
-
-# 4. Register the project with airgap
-airgap init autoresearch \
-  --dockerfile ~/code/autoresearch/Dockerfile \
-  --work-dir   ~/code/autoresearch \
-  --mount      /data/autoresearch \
-  --allow      "huggingface.co cdn-lfs.huggingface.co cdn-lfs-us-1.huggingface.co download.pytorch.org"
-
-# 5. Build (~5–15 min depending on link). uv sync, kernels download, etc.
-airgap autoresearch build
-
-# 6. ONE-TIME host-side prepare step (trusted user space, NOT inside the
-#    sandboxed agent container). Runs prepare.py against the project base
-#    image with full internet access; data lands on the mounted volume.
-docker run --rm --gpus all \
-  -v /data/autoresearch:/data \
-  -e AUTORESEARCH_CACHE_DIR=/data \
-  airgap-autoresearch-base \
-  bash -lc "cd /opt/autoresearch && uv run prepare.py --num-shards 10"
-
-# 7. Launch the agent — fully airgapped from this point on
-airgap autoresearch copilot -p "@plan.md run the plan"
+# 2. Launch — start.sh registers with airgap, builds the image, runs the
+#    one-time host-side prepare step, then drops into the airgapped agent.
+#    Idempotent: re-running just relaunches the agent.
+./start.sh
 ```
 
-Subsequent launches are just step 7. The agent boots, reads `plan.md`, verifies
-the environment, smoke-tests `train.py`, then enters the `program.md` loop
-(branch → edit `train.py` → run → grep `val_bpb` → keep or revert → repeat).
+That's it. `start.sh` does:
 
-See [`airgap/airgap.conf.example`](airgap/airgap.conf.example) for a sample
-config and [`plan.md`](plan.md) for what the agent does on boot.
+1. Create the host data dir (default `/data/autoresearch`)
+2. `airgap init autoresearch …` (skipped if config exists)
+3. `airgap autoresearch build` (fingerprint-cached after first run)
+4. One-time `docker run … prepare.py --num-shards 10` to populate the data volume
+5. `airgap autoresearch copilot -p "@plan.md run the plan"`
+
+Pass a custom prompt to override step 5: `./start.sh "verify the environment then exit"`.
+
+Tunable env vars: `AUTORESEARCH_PROJECT`, `AUTORESEARCH_DATA_DIR`, `AUTORESEARCH_NUM_SHARDS`.
+
+See [`airgap/airgap.conf.example`](airgap/airgap.conf.example) for the
+generated config and [`plan.md`](plan.md) for what the agent does on boot.
 
 ### Vanilla / non-airgap quickstart (upstream-equivalent)
 
@@ -103,6 +87,7 @@ The `program.md` file is essentially a super lightweight "skill".
 
 ```
 Dockerfile      — Stage-1 base image (CUDA + uv + deps + FA3 kernels)
+start.sh        — one-shot launcher (airgap init + build + prepare + copilot)
 plan.md         — agent boot playbook (read first inside the airgap container)
 program.md      — agent loop instructions (the experiment loop)
 prepare.py      — constants, data prep + runtime utilities (do not modify)
