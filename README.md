@@ -31,7 +31,7 @@ agent's point of view: no PyPI, no HuggingFace, no GitHub egress at run time.
 
 ```bash
 # 1. Clone this fork
-git clone https://github.com/<your-org>/autoresearch ~/autoresearch
+git clone https://github.com/gabrieldernbach/autoresearch ~/autoresearch
 cd ~/autoresearch
 
 # 2. Launch — start.sh registers with airgap, builds the image, runs the
