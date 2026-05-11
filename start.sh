@@ -52,7 +52,7 @@ if [[ ! -f "$CONF" ]]; then
     --dockerfile "$REPO_DIR/Dockerfile" \
     --work-dir   "$REPO_DIR" \
     --mount      "$DATA_DIR" \
-    --allow      "huggingface.co cdn-lfs.huggingface.co cdn-lfs-us-1.huggingface.co download.pytorch.org"
+    --allow      "huggingface.co download.pytorch.org"
 else
   log "airgap config exists at $CONF (skipping init)"
 fi
@@ -76,10 +76,19 @@ fi
 
 if [[ "$NEED_PREPARE" == "1" ]]; then
   log "host-side prepare: docker run prepare.py --num-shards $NUM_SHARDS"
+  # airgap names the base image airgap-<name>-<projectid>-base; discover via labels.
+  BASE_IMAGE=$(docker images \
+    --filter "label=airgap.project=${PROJECT_NAME}" \
+    --filter "label=airgap.stage=base" \
+    --format '{{.Repository}}:{{.Tag}}' | head -n1)
+  if [[ -z "$BASE_IMAGE" ]]; then
+    echo "could not find airgap base image for $PROJECT_NAME" >&2
+    exit 1
+  fi
   docker run --rm --gpus all \
-    -v "$DATA_DIR":/data \
-    -e AUTORESEARCH_CACHE_DIR=/data \
-    "airgap-${PROJECT_NAME}-base" \
+    -v "$DATA_DIR":"$DATA_DIR" \
+    -e AUTORESEARCH_CACHE_DIR="$DATA_DIR" \
+    "$BASE_IMAGE" \
     bash -lc "cd /opt/autoresearch && uv run prepare.py --num-shards $NUM_SHARDS"
 else
   log "data and tokenizer already present at $DATA_DIR (skipping prepare)"

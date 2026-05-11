@@ -15,7 +15,7 @@
 #
 # The image must remain Debian/Ubuntu-based (airgap rejects Alpine).
 
-FROM nvcr.io/nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
+FROM nvcr.io/nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Gap 1: vendor uv inside the image (no `curl astral.sh | sh` at runtime)
-RUN pip3 install --no-cache-dir --break-system-packages uv==0.5.*
+RUN pip3 install --no-cache-dir uv==0.5.*
 
 WORKDIR /opt/autoresearch
 
@@ -61,42 +61,38 @@ RUN mkdir -p /opt/hf-cache && \
         uv run python -c "from kernels import get_kernel; \
 get_kernel('kernels-community/flash-attn3'); \
 get_kernel('varunneal/flash-attention-3')" ; \
-    fi
-
-# Resolve the pinned snapshot SHAs and bake them into LOCAL_KERNELS, which
-# short-circuits get_kernel() to a pure filesystem path at runtime — this is
-# the only fully reliable way to be offline (HF_HUB_OFFLINE=1 alone does NOT
-# work because kernels.list_repo_tree() is a live REST call).
-RUN COMMUNITY_SHA=$(cat /opt/hf-cache/kernels--kernels-community--flash-attn3/refs/main 2>/dev/null) ; \
-    VARUNNEAL_SHA=$(cat /opt/hf-cache/kernels--varunneal--flash-attention-3/refs/main 2>/dev/null) ; \
-    { \
-      echo "export HF_HUB_CACHE=/opt/hf-cache" ; \
-      echo "export KERNELS_CACHE=/opt/hf-cache" ; \
-      echo "export HF_HUB_OFFLINE=1" ; \
-      echo "export DISABLE_TELEMETRY=yes" ; \
-      echo "export AUTORESEARCH_CACHE_DIR=/data" ; \
-      if [ -n "$COMMUNITY_SHA" ] && [ -n "$VARUNNEAL_SHA" ]; then \
-        echo "export LOCAL_KERNELS=\"kernels-community/flash-attn3=/opt/hf-cache/kernels--kernels-community--flash-attn3/snapshots/$COMMUNITY_SHA:varunneal/flash-attention-3=/opt/hf-cache/kernels--varunneal--flash-attention-3/snapshots/$VARUNNEAL_SHA\"" ; \
-      elif [ -n "$COMMUNITY_SHA" ]; then \
-        echo "export LOCAL_KERNELS=\"kernels-community/flash-attn3=/opt/hf-cache/kernels--kernels-community--flash-attn3/snapshots/$COMMUNITY_SHA\"" ; \
-      elif [ -n "$VARUNNEAL_SHA" ]; then \
-        echo "export LOCAL_KERNELS=\"varunneal/flash-attention-3=/opt/hf-cache/kernels--varunneal--flash-attention-3/snapshots/$VARUNNEAL_SHA\"" ; \
+    fi && \
+    # Create stable 'current' symlinks so ENV LOCAL_KERNELS below can be static.
+    for repo in kernels--kernels-community--flash-attn3 kernels--varunneal--flash-attention-3 ; do \
+      sha=$(cat /opt/hf-cache/$repo/refs/main 2>/dev/null) ; \
+      if [ -n "$sha" ] && [ -d /opt/hf-cache/$repo/snapshots/$sha ]; then \
+        ln -sfn "$sha" /opt/hf-cache/$repo/snapshots/current ; \
       fi ; \
-    } > /etc/profile.d/autoresearch.sh && chmod 0644 /etc/profile.d/autoresearch.sh
+    done
 
-# Mirror the same env into the system-wide environment so non-login shells
-# (which is how Copilot's `bash -c` invocations run) also see them.
-RUN sed -E 's/^export +//' /etc/profile.d/autoresearch.sh >> /etc/environment
+# Static env vars baked at the Docker layer so they apply to non-login shells
+# (Copilot launches via `bash -c`, which sources neither /etc/profile.d nor
+# /etc/environment). LOCAL_KERNELS short-circuits get_kernel() to a pure
+# filesystem path — the only fully reliable way to be offline (HF_HUB_OFFLINE=1
+# alone does NOT suffice because kernels.list_repo_tree() is a live REST call).
+ENV HF_HUB_OFFLINE=1 \
+    DISABLE_TELEMETRY=yes \
+    AUTORESEARCH_CACHE_DIR=/data/autoresearch \
+    LOCAL_KERNELS="kernels-community/flash-attn3=/opt/hf-cache/kernels--kernels-community--flash-attn3/snapshots/current:varunneal/flash-attention-3=/opt/hf-cache/kernels--varunneal--flash-attention-3/snapshots/current"
 
-# Gap 4: data lives on a host-mounted volume at /data (airgap --mount).
-# The agent reads/writes here via AUTORESEARCH_CACHE_DIR=/data (see env above).
-# The volume is populated once on the host via:
+# Gap 4: data lives on a host-mounted volume at /data/autoresearch (identity-
+# mapped via `airgap --mount /data/autoresearch`). The agent reads/writes here
+# via AUTORESEARCH_CACHE_DIR=/data/autoresearch (set in ENV above). The
+# volume is populated once on the host with:
 #   docker run --rm --gpus all \
-#     -v /host/path/data:/data -e AUTORESEARCH_CACHE_DIR=/data \
+#     -v /data/autoresearch:/data/autoresearch \
+#     -e AUTORESEARCH_CACHE_DIR=/data/autoresearch \
 #     <this-image> bash -lc "cd /opt/autoresearch && uv run prepare.py --num-shards 10"
-RUN mkdir -p /data
-VOLUME ["/data"]
+RUN mkdir -p /data/autoresearch
+VOLUME ["/data/autoresearch"]
 
-# airgap creates user `airgap` with UID/GID 1000 in Stage 2. Pre-chown the
-# project + kernel cache so that user can read everything without root.
-RUN chown -R 1000:1000 /opt/autoresearch /opt/hf-cache /data
+# NOTE: airgap's Stage 2 wrapper creates the agent user with the HOST UID/GID,
+# not necessarily 1000. We rely on world-readable defaults (0755 dirs, 0644
+# files, 0755 binaries) so that any UID can read /opt/autoresearch and
+# /opt/hf-cache. The /data volume is bind-mounted from the host with host
+# ownership, so it is naturally writable by the agent user.

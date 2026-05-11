@@ -11,7 +11,7 @@ reachable. Everything you need to do research is already on disk.
 |---|---|---|
 | Python venv (torch+cu128, kernels, tiktoken, rustbpe, …) | `/opt/autoresearch/.venv` (managed by `uv`) | Frozen at image build |
 | Flash-Attention-3 CUDA kernels | `/opt/hf-cache/` | Frozen, accessed via `LOCAL_KERNELS` |
-| Training data shards + BPE tokenizer | `/data/` (env: `AUTORESEARCH_CACHE_DIR=/data`) | Populated by the operator before launch |
+| Training data shards + BPE tokenizer | `/data/autoresearch/` (env: `AUTORESEARCH_CACHE_DIR=/data/autoresearch`) | Populated by the operator before launch |
 | Project source (you may edit `train.py`) | `/opt/autoresearch/` | Mounted from host (`WORK_DIR`) |
 | Loop semantics | `program.md` (next to this file) | Read after the verification step |
 

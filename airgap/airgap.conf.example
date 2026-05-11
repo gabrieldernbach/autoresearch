@@ -24,7 +24,7 @@ MOUNTS="/data/autoresearch"
 # Extra domains to add to the Squid allowlist (space-separated).
 # Only relevant during `airgap autoresearch build` and the host-side prepare
 # step. The runtime agent network is `internal: true` and never reaches Squid.
-EXTRA_ALLOWED_DOMAINS="huggingface.co cdn-lfs.huggingface.co cdn-lfs-us-1.huggingface.co download.pytorch.org"
+EXTRA_ALLOWED_DOMAINS="huggingface.co download.pytorch.org"
 
 # Azure identity proxy — leave off unless you also want the agent to assume
 # an Azure managed identity (not used by autoresearch itself).
