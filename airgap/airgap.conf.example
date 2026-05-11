@@ -1,0 +1,32 @@
+# shellcheck shell=bash
+#
+# Example airgap config for the autoresearch project.
+# Copy to ~/.config/airgap/autoresearch.conf and edit paths.
+#
+# This file is generated for you by `airgap init autoresearch ...` — you only
+# need to maintain it by hand if you skip `airgap init` or want to tweak it.
+
+# Where the project source lives on the host. Identity-mounted into the
+# container (same path inside and out). Must be the path to your fork of
+# karpathy/autoresearch.
+WORK_DIR="/home/$USER/code/autoresearch"
+
+# Path to the Stage-1 Dockerfile in the fork.
+DOCKERFILE="/home/$USER/code/autoresearch/Dockerfile"
+
+# Newline-separated list of additional bind mounts. Each entry is identity-
+# mapped (same path inside and out). Append :ro for read-only.
+#
+# Mount the host data dir here so the agent can read pre-staged shards/tokenizer
+# from /data inside the container (matches AUTORESEARCH_CACHE_DIR=/data).
+MOUNTS="/data/autoresearch"
+
+# Extra domains to add to the Squid allowlist (space-separated).
+# Only relevant during `airgap autoresearch build` and the host-side prepare
+# step. The runtime agent network is `internal: true` and never reaches Squid.
+EXTRA_ALLOWED_DOMAINS="huggingface.co cdn-lfs.huggingface.co cdn-lfs-us-1.huggingface.co download.pytorch.org"
+
+# Azure identity proxy — leave off unless you also want the agent to assume
+# an Azure managed identity (not used by autoresearch itself).
+AZURE_PROXY="0"
+AZURE_IDENTITY_TYPE="vm"

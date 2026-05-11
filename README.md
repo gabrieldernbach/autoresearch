@@ -18,30 +18,80 @@ By design, training runs for a **fixed 5-minute time budget** (wall clock, exclu
 
 If you are new to neural networks, this ["Dummy's Guide"](https://x.com/hooeem/status/2030720614752039185) looks pretty good for a lot more context.
 
-## Quick start
+## Quick start (airgap, zero-shot)
 
-**Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [uv](https://docs.astral.sh/uv/).
+This fork is designed to run end-to-end inside [`msr-ai4science/airgap`](https://github.com/msr-ai4science/airgap)
+— a network-isolated, hardened container that adds GitHub Copilot CLI on top of
+the project image. Everything below the **Build** step happens **offline** from
+the agent's point of view: there is no PyPI, no HuggingFace, no GitHub egress
+once the agent is running.
+
+**Requirements:** Docker 23+, Compose v2.24+, GitHub CLI (`gh`), an NVIDIA GPU
+(tested on H100; A100 also works), and one of GitHub Copilot or an internal
+Copilot endpoint.
 
 ```bash
+# 1. Install airgap (one-time)
+gh api repos/msr-ai4science/airgap/contents/install.sh --jq '.content' | base64 -d | bash
+airgap auth login
 
-# 1. Install uv project manager (if you don't already have it)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# 2. Clone this fork
+git clone https://github.com/<your-org>/autoresearch ~/code/autoresearch
 
-# 2. Install dependencies
-uv sync
+# 3. Create the host data directory (will hold ~1.1 GB of pre-staged shards)
+sudo mkdir -p /data/autoresearch && sudo chown $USER /data/autoresearch
 
-# 3. Download data and train tokenizer (one-time, ~2 min)
-uv run prepare.py
+# 4. Register the project with airgap
+airgap init autoresearch \
+  --dockerfile ~/code/autoresearch/Dockerfile \
+  --work-dir   ~/code/autoresearch \
+  --mount      /data/autoresearch \
+  --allow      "huggingface.co cdn-lfs.huggingface.co cdn-lfs-us-1.huggingface.co download.pytorch.org"
 
-# 4. Manually run a single training experiment (~5 min)
-uv run train.py
+# 5. Build (~5–15 min depending on link). uv sync, kernels download, etc.
+airgap autoresearch build
+
+# 6. ONE-TIME host-side prepare step (trusted user space, NOT inside the
+#    sandboxed agent container). Runs prepare.py against the project base
+#    image with full internet access; data lands on the mounted volume.
+docker run --rm --gpus all \
+  -v /data/autoresearch:/data \
+  -e AUTORESEARCH_CACHE_DIR=/data \
+  airgap-autoresearch-base \
+  bash -lc "cd /opt/autoresearch && uv run prepare.py --num-shards 10"
+
+# 7. Launch the agent — fully airgapped from this point on
+airgap autoresearch copilot -p "@plan.md run the plan"
 ```
 
-If the above commands all work ok, your setup is working and you can go into autonomous research mode.
+Subsequent launches are just step 7. The agent boots, reads `plan.md`, verifies
+the environment, smoke-tests `train.py`, then enters the `program.md` loop
+(branch → edit `train.py` → run → grep `val_bpb` → keep or revert → repeat).
+
+See [`airgap/airgap.conf.example`](airgap/airgap.conf.example) for a sample
+config and [`plan.md`](plan.md) for what the agent does on boot.
+
+### Vanilla / non-airgap quickstart (upstream-equivalent)
+
+If you don't want airgap, the original upstream flow still works (this fork
+only adds env-var overrides; defaults are unchanged):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv
+uv sync                                           # install deps
+uv run prepare.py                                 # download data + train tokenizer
+uv run train.py                                   # smoke-test
+# then attach Claude/Codex/etc. to the repo and prompt with program.md
+```
 
 ## Running the agent
 
-Simply spin up your Claude/Codex or whatever you want in this repo (and disable all permissions), then you can prompt something like:
+Inside the airgap container, the agent is GitHub Copilot CLI invoked with
+`-p "@plan.md run the plan"`. `plan.md` is a thin playbook that defers loop
+semantics to `program.md` (the upstream "skill" file).
+
+If you'd rather attach a different agent on a non-airgap host, the upstream
+recipe still works:
 
 ```
 Hi have a look at program.md and let's kick off a new experiment! let's do the setup first.
@@ -52,10 +102,13 @@ The `program.md` file is essentially a super lightweight "skill".
 ## Project structure
 
 ```
+Dockerfile      — Stage-1 base image (CUDA + uv + deps + FA3 kernels)
+plan.md         — agent boot playbook (read first inside the airgap container)
+program.md      — agent loop instructions (the experiment loop)
 prepare.py      — constants, data prep + runtime utilities (do not modify)
 train.py        — model, optimizer, training loop (agent modifies this)
-program.md      — agent instructions
 pyproject.toml  — dependencies
+airgap/         — sample airgap configs (.conf, .env)
 ```
 
 ## Design choices
