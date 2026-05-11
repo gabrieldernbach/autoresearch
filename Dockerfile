@@ -78,6 +78,7 @@ get_kernel('varunneal/flash-attention-3')" ; \
 ENV HF_HUB_OFFLINE=1 \
     DISABLE_TELEMETRY=yes \
     AUTORESEARCH_CACHE_DIR=/data/autoresearch \
+    UV_PROJECT_ENVIRONMENT=/opt/autoresearch/.venv \
     LOCAL_KERNELS="kernels-community/flash-attn3=/opt/hf-cache/kernels--kernels-community--flash-attn3/snapshots/current:varunneal/flash-attention-3=/opt/hf-cache/kernels--varunneal--flash-attention-3/snapshots/current"
 
 # Gap 4: data lives on a host-mounted volume at /data/autoresearch (identity-
