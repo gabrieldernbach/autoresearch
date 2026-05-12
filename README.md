@@ -4,7 +4,7 @@
 
 This fork is designed to run end-to-end inside [`msr-ai4science/airgap`](https://github.com/msr-ai4science/airgap)
 — a network-isolated, hardened container that adds GitHub Copilot CLI on top of
-the project image. Everything below `./start.sh` happens **offline** from the
+the project image. Everything after `./init.sh` happens **offline** from the
 agent's point of view: no PyPI, no HuggingFace, no GitHub egress at run time.
 
 **Requirements:** Docker 23+, NVIDIA Container Toolkit, an NVIDIA GPU
@@ -16,23 +16,25 @@ agent's point of view: no PyPI, no HuggingFace, no GitHub egress at run time.
 git clone https://github.com/gabrieldernbach/autoresearch ~/autoresearch
 cd ~/autoresearch
 
-# 2. Launch — start.sh registers with airgap, builds the image, runs the
-#    one-time host-side prepare step, then drops into the airgapped agent.
-#    Idempotent: re-running just relaunches the agent.
-./start.sh
+# 2. One-time setup (airgap init + build + prepare). Idempotent.
+./init.sh
+
+# 3. Launch the agent yourself when you're ready (long-running, interactive)
+airgap autoresearch copilot -p "@plan.md run the plan"
 ```
 
-That's it. `start.sh` does:
+`init.sh` does:
 
 1. Create the host data dir (default `/data/autoresearch`)
 2. `airgap init autoresearch …` (skipped if config exists)
 3. `airgap autoresearch build` (fingerprint-cached after first run)
 4. One-time `docker run … prepare.py --num-shards 10` to populate the data volume
-5. `airgap autoresearch copilot -p "@plan.md run the plan"`
+5. Prints the launch command above
 
-Pass a custom prompt to override step 5: `./start.sh "verify the environment then exit"`.
+Tunable env vars for `init.sh`: `AUTORESEARCH_PROJECT`, `AUTORESEARCH_DATA_DIR`, `AUTORESEARCH_NUM_SHARDS`.
 
-Tunable env vars: `AUTORESEARCH_PROJECT`, `AUTORESEARCH_DATA_DIR`, `AUTORESEARCH_NUM_SHARDS`.
+For a custom prompt: `airgap autoresearch copilot -p "verify the environment then exit"`.
+For an interactive session (no prompt): `airgap autoresearch copilot`.
 
 See [`airgap/airgap.conf.example`](airgap/airgap.conf.example) for the
 generated config and [`plan.md`](plan.md) for what the agent does on boot.
@@ -90,7 +92,7 @@ The `program.md` file is essentially a super lightweight "skill".
 
 ```
 Dockerfile      — Stage-1 base image (CUDA + uv + deps + FA3 kernels)
-start.sh        — one-shot launcher (airgap init + build + prepare + copilot)
+init.sh         — one-time setup (airgap init + build + prepare); prints launch cmd
 plan.md         — agent boot playbook (read first inside the airgap container)
 program.md      — agent loop instructions (the experiment loop)
 prepare.py      — constants, data prep + runtime utilities (do not modify)

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# start.sh — bring up autoresearch inside an airgapped Copilot container.
+# init.sh — one-time setup for autoresearch inside an airgapped Copilot container.
+#
+# Does NOT launch the agent — prints the launch command at the end so you
+# can start the (interactive, long-running) Copilot session yourself.
 #
 # Assumes:
 #   * `airgap` is already installed and `airgap auth login` has been run
@@ -7,12 +10,7 @@
 #   * Docker 23+ with the NVIDIA Container Toolkit
 #   * An NVIDIA GPU (H100 tested; A100 supported)
 #
-# This script is fully idempotent — re-running it after the first launch
-# only re-invokes the agent (steps 1–4 are no-ops if already done).
-#
-# Usage:
-#   ./start.sh                   # default prompt: "@plan.md run the plan"
-#   ./start.sh "do X then Y"     # custom prompt forwarded to copilot -p
+# Fully idempotent — safe to re-run; existing artifacts are skipped.
 
 set -euo pipefail
 
@@ -20,9 +18,8 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_NAME="${AUTORESEARCH_PROJECT:-autoresearch}"
 DATA_DIR="${AUTORESEARCH_DATA_DIR:-/data/autoresearch}"
 NUM_SHARDS="${AUTORESEARCH_NUM_SHARDS:-10}"
-PROMPT="${1:-@plan.md run the plan}"
 
-log() { printf '\033[1;36m[start]\033[0m %s\n' "$*"; }
+log() { printf '\033[1;36m[init]\033[0m %s\n' "$*"; }
 
 # ---------------------------------------------------------------------------
 # 0. Sanity
@@ -95,7 +92,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Hand off to Copilot, fully airgapped
+# 5. Done — print the launch command for the user to invoke themselves
 # ---------------------------------------------------------------------------
-log "airgap $PROJECT_NAME copilot -p \"$PROMPT\""
-exec airgap "$PROJECT_NAME" copilot -p "$PROMPT"
+printf '\n\033[1;32m[init]\033[0m Setup complete. To start the agent, run:\n\n'
+printf '    airgap %s copilot -p "@plan.md run the plan"\n\n' "$PROJECT_NAME"
+printf 'Or for an interactive Copilot session (no prompt):\n\n'
+printf '    airgap %s copilot\n\n' "$PROJECT_NAME"
