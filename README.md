@@ -19,8 +19,11 @@ cd ~/autoresearch
 # 2. One-time setup (airgap init + build + prepare). Idempotent.
 ./init.sh
 
-# 3. Launch the agent yourself when you're ready (long-running, interactive)
-airgap autoresearch copilot -p "@plan.md run the plan"
+# 3. Launch the agent yourself when you're ready (long-running, interactive).
+#    Wrap in `while … done` so the experiment loop survives Copilot exits
+#    (rate limits, transient errors, "I think I'm done" — per program.md
+#    "NEVER STOP"). Drop the wrapper if you only want a single session.
+while true; do airgap autoresearch copilot -p "@plan.md run the plan"; sleep 10; done
 ```
 
 `init.sh` does:

@@ -96,5 +96,8 @@ fi
 # ---------------------------------------------------------------------------
 printf '\n\033[1;32m[init]\033[0m Setup complete. To start the agent, run:\n\n'
 printf '    airgap %s copilot -p "@plan.md run the plan"\n\n' "$PROJECT_NAME"
-printf 'Or for an interactive Copilot session (no prompt):\n\n'
+printf 'Or wrap in a loop so the agent restarts after exits/rate-limits\n'
+printf '(per program.md "NEVER STOP"):\n\n'
+printf '    while true; do airgap %s copilot -p "@plan.md run the plan"; sleep 10; done\n\n' "$PROJECT_NAME"
+printf 'For an interactive Copilot session (no prompt):\n\n'
 printf '    airgap %s copilot\n\n' "$PROJECT_NAME"
